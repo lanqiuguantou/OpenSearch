@@ -1,0 +1,74 @@
+import org.opensearch.gradle.testclusters.RunTask
+
+apply plugin: 'opensearch.testclusters'
+
+def numNodes = findProperty('numNodes') as Integer ?: 4
+def boots = (findProperty('boots') as String) == '1'
+def rname = "s3-remote-all"
+
+testClusters {
+  runTask {
+    testDistribution = 'archive'
+    numberOfNodes = numNodes
+
+    // 2 写 + 2 搜
+    nodes.eachWithIndex { n, i ->
+      if (i == 0) {
+        n.setting "node.roles", "[cluster_manager,data,ingest]"
+      } else if (i < 2) {
+        n.setting "node.roles", "[data,ingest]"
+      } else {
+        n.setting "node.roles", "[search]"
+      }
+    }
+
+    setting "discovery.seed_providers", "settings"
+    setting "discovery.seed_hosts", "127.0.0.1:9300,127.0.0.1:9301,127.0.0.1:9302,127.0.0.1:9303"
+
+    if (boots) {
+      setting "cluster.initial_cluster_manager_nodes", "runTask-0"
+    }
+
+    setting "cluster.remote_store.state.enabled", "true"
+    setting "s3.client.default.endpoint", "http://127.0.0.1:9000"
+    setting "s3.client.default.protocol", "http"
+    setting "s3.client.default.path_style_access", "true"
+    setting "s3.client.default.region", "us-east-1"
+
+    plugin ':plugins:repository-s3'
+
+    nodes.all { n ->
+      n.jvmArgs("-Xms512m", "-Xmx512m")
+
+      // 指定 segment/translog 对应的“仓库名”
+      n.setting "node.attr.remote_store.segment.repository",  rname
+      n.setting "node.attr.remote_store.translog.repository", rname
+      n.setting "node.attr.remote_store.state.repository",    rname
+
+      // 定义该仓库的类型与参数（等价于“自动注册仓库”）
+      n.setting "node.attr.remote_store.repository.${rname}.type", "s3"
+      n.setting "node.attr.remote_store.repository.${rname}.settings.bucket",    "os-remote-bucket"
+      n.setting "node.attr.remote_store.repository.${rname}.settings.base_path", "dev"
+      n.setting "node.attr.remote_store.repository.${rname}.settings.region",    "us-east-1"
+      n.setting "node.attr.remote_store.repository.${rname}.settings.path_style_access", "true"
+
+      // 从环境变量读取更安全；没有就用默认示例值
+      def ak = System.getenv('MINIO_ACCESS_KEY') ?: 'access_key'
+      def sk = System.getenv('MINIO_SECRET_KEY') ?: 'secret_key'
+      n.keystore("s3.client.default.access_key", ak)
+      n.keystore("s3.client.default.secret_key", sk)
+      // 如有临时令牌，可加：
+      // def st = System.getenv('MINIO_SESSION_TOKEN')
+      // if (st) n.keystore("s3.client.default.session_token", st)
+    }
+  }
+}
+
+
+tasks.register("run", RunTask) {
+  useCluster testClusters.runTask
+  group = 'Verification'
+  description = 'Runs OpenSearch (SW separation dev cluster)'
+  // 调试端口：5005 起自增；HTTP：9200 起自增；Transport：9300 起自增（RunTask 已实现）
+}
+

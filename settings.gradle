@@ -151,3 +151,6 @@ if (extraProjects.exists()) {
     addSubProjects('', extraProjectDir)
   }
 }
+
+include(":dev-sw-sep")
+project(":dev-sw-sep").projectDir = file("dev/sw-sep")
