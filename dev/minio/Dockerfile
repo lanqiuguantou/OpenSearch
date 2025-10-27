@@ -1,12 +1,10 @@
-FROM alpine:3.20 AS mcget
-RUN apk add --no-cache curl ca-certificates && \
-    curl -L "https://dl.min.io/client/mc/release/linux-amd64/mc" -o /mc && \
-    chmod +x /mc
+# 用官方 mc 镜像拿现成二进制，避免 apk/curl/外网
+FROM --platform=$TARGETPLATFORM minio/mc:RELEASE.2025-08-13T08-35-41Z AS mcget
 
+FROM --platform=$TARGETPLATFORM minio/minio:RELEASE.2025-09-07T16-13-09Z
 
-FROM minio/minio:RELEASE.2025-09-07T16-13-09Z
-
-COPY --from=mcget /mc /usr/local/bin/mc
+# mc 在官方镜像里通常是 /usr/bin/mc
+COPY --from=mcget /usr/bin/mc /usr/local/bin/mc
 
 ARG bucket
 ARG accessKey
@@ -21,4 +19,3 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 9000 9001
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-

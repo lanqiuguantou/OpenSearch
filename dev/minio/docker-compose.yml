@@ -1,6 +1,7 @@
 version: "3.8"
 services:
   minio-fixture:
+    network_mode: host
     build:
       context: .
       dockerfile: Dockerfile
